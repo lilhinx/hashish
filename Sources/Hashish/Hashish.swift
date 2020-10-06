@@ -186,7 +186,7 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
         self.partition = partition
     }
     
-    var diskWorkers:[CollectionType:DispatchWorkItem] = [ : ]
+   
     var subjects:[CollectionType:KeyValueCollectionSubject] = [ : ]
     
     private func getSubject( for collection:CollectionType )->KeyValueCollectionSubject
@@ -233,8 +233,7 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
                     return
                 }
                 
-                self.diskWorkers[ collection ]?.cancel( )
-                self.diskWorkers[ collection ] = DispatchWorkItem
+                self.diskQueue.async
                 {
                     let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
                     {
@@ -282,8 +281,6 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
                         os_log( "disk write error: %{public}@", log:self.log, type:.error, error.localizedDescription )
                     }
                 }
-                
-                self.diskQueue.asyncAfter( deadline:.now( ) + .seconds( 2 ), execute:self.diskWorkers[ collection ]! )
             }
         }
     }
