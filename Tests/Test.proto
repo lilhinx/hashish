@@ -1,0 +1,31 @@
+//
+//  Test.proto
+//  
+//
+//  Created by Chris Hinkle on 8/20/20.
+//
+
+syntax = "proto3";
+
+package Racket;
+
+option swift_prefix="Model";
+
+
+message Foo
+{
+    string name = 1;
+    int32 num = 2;
+}
+
+message FooMeta
+{
+    bool cool = 1;
+    string narm = 2;
+}
+
+message ImportantDocument
+{
+    string text = 1;
+    int64 version = 2;
+}

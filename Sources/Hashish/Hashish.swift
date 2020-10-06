@@ -23,9 +23,9 @@ public struct HashishValue
     public var metadata:Message?
 }
 
-public class HashishTable<CollectionType> where CollectionType:Collection
+public class HashishTable<CollectionType,KeyType> where CollectionType:Collection, KeyType:Hashable
 {
-    public typealias KeyValueStore = [String:HashishValue]
+    public typealias KeyValueStore = [KeyType:HashishValue]
     typealias KeyValueCollectionSubject = CurrentValueSubject<KeyValueStore,Never>
     public typealias KeyValueCollectionPublisher = AnyPublisher<KeyValueStore,Never>
     public typealias ReadTransactionBlock = ( KeyValueStore )->Void
@@ -37,7 +37,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
         case commit
     }
     
-    fileprivate static func put( data:Message, for key:String, in collection:CollectionType, with store: inout KeyValueStore, phase:Phase, clobber:Bool = false )
+    fileprivate static func put( data:Message, for key:KeyType, in collection:CollectionType, with store: inout KeyValueStore, phase:Phase, clobber:Bool = false )
     {
         if store.keys.contains( key )
         {
@@ -63,12 +63,12 @@ public class HashishTable<CollectionType> where CollectionType:Collection
         }
     }
     
-    fileprivate static func remove( for key:String, in collection:CollectionType, with store: inout KeyValueStore )
+    fileprivate static func remove( for key:KeyType, in collection:CollectionType, with store: inout KeyValueStore )
     {
         store.removeValue( forKey:key )
     }
     
-    fileprivate static func putMeta( metadata:Message, for key:String, in collection:CollectionType, with store:inout KeyValueStore, initiallyOnly:Bool )
+    fileprivate static func putMeta( metadata:Message, for key:KeyType, in collection:CollectionType, with store:inout KeyValueStore, initiallyOnly:Bool )
     {
         guard store.keys.contains( key ) else
         {
@@ -86,7 +86,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
         store[ key ]!.metadata = metadata
     }
     
-    fileprivate static func removeMeta( for key:String, in collection:CollectionType, with store:inout KeyValueStore )
+    fileprivate static func removeMeta( for key:KeyType, in collection:CollectionType, with store:inout KeyValueStore )
     {
         guard store.keys.contains( key ) else
         {
@@ -99,12 +99,12 @@ public class HashishTable<CollectionType> where CollectionType:Collection
     public struct WriteTransaction
     {
         internal let collection:CollectionType
-        internal let existingKeys:Set<String>
+        internal let existingKeys:Set<KeyType>
         internal var update:KeyValueStore = [ : ]
-        internal var deletes:Set<String> = [ ]
-        internal var metadataUpdate:[String:Message] = [ : ]
-        internal var metadataUpdateIsInitiallyOnly:[String:Bool] = [ : ]
-        internal var metadataDeletes:Set<String> = [ ]
+        internal var deletes:Set<KeyType> = [ ]
+        internal var metadataUpdate:[KeyType:Message] = [ : ]
+        internal var metadataUpdateIsInitiallyOnly:[KeyType:Bool] = [ : ]
+        internal var metadataDeletes:Set<KeyType> = [ ]
         
         internal var mutationCount:Int
         {
@@ -139,34 +139,34 @@ public class HashishTable<CollectionType> where CollectionType:Collection
             return store
         }
         
-        public mutating func put( data:Message, for key:String, clobber:Bool = false )
+        public mutating func put( data:Message, for key:KeyType, clobber:Bool = false )
         {
             HashishTable.put( data:data, for:key, in:collection, with:&update, phase:.prepare, clobber:clobber )
             deletes.remove( key )
         }
         
-        public mutating func remove( for key:String )
+        public mutating func remove( for key:KeyType )
         {
             HashishTable.remove( for:key, in:collection, with:&update )
             deletes.insert( key )
         }
                 
-        public mutating func putMeta( metadata:Message, for key:String, initiallyOnly:Bool = false )
+        public mutating func putMeta( metadata:Message, for key:KeyType, initiallyOnly:Bool = false )
         {
             metadataUpdateIsInitiallyOnly[ key ] = initiallyOnly
             metadataUpdate[ key ] = metadata
             metadataDeletes.remove( key )
         }
         
-        public mutating func removeMeta( for key:String )
+        public mutating func removeMeta( for key:KeyType )
         {
             metadataUpdate.removeValue( forKey:key )
             metadataDeletes.insert( key )
         }
         
-        public mutating func removeAll( notPresentIn keys:Set<String> )
+        public mutating func removeAll( notPresentIn keys:Set<KeyType> )
         {
-            let deletes:Set<String> = existingKeys.subtracting( keys )
+            let deletes:Set<KeyType> = existingKeys.subtracting( keys )
             for key in deletes
             {
                 remove( for:key )
@@ -221,7 +221,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
         queue.async
         {
             let subject = self.getSubject( for:collection )
-            var transaction:WriteTransaction = .init( collection:collection, existingKeys:Set<String>( subject.value.keys ) )
+            var transaction:WriteTransaction = .init( collection:collection, existingKeys:Set<KeyType>( subject.value.keys ) )
             block( subject.value, &transaction )
             if transaction.isMutated
             {
@@ -236,7 +236,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
                 self.diskWorkers[ collection ]?.cancel( )
                 self.diskWorkers[ collection ] = DispatchWorkItem
                 {
-                    let serializedData:[String:Data] = mutatedValue.compactMapValues
+                    let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
                     {
                         ( value )->Data? in
                         guard let data = try? value.data.serializedData( ) else
@@ -257,7 +257,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
                         let data = try NSKeyedArchiver.archivedData( withRootObject:serializedData, requiringSecureCoding:true )
                         try data.write( to:self.dataStorageURL( for:collection ) )
                         
-                        let serializedMetadata:[String:Data] = mutatedValue.compactMapValues
+                        let serializedMetadata:[KeyType:Data] = mutatedValue.compactMapValues
                         {
                             ( value )->Data? in
                             guard let data = try? value.metadata?.serializedData( ) else
@@ -331,7 +331,7 @@ public class HashishTable<CollectionType> where CollectionType:Collection
                 
                 do
                 {
-                    if let deserializedData = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData( data ) as? [String:Data]
+                    if let deserializedData = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData( data ) as? [KeyType:Data]
                     {
                         let dataValues = deserializedData.compactMapValues
                         {
@@ -339,11 +339,11 @@ public class HashishTable<CollectionType> where CollectionType:Collection
                             return collection.decode( data:data )
                         }
                         
-                        var metadataValues:[String:Message] = [ : ]
+                        var metadataValues:[KeyType:Message] = [ : ]
                         
                         if let metadata = try? Data.init( contentsOf:self.metadataStorageURL( for:collection ) )
                         {
-                            if let deserializedMetadata = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData( metadata ) as? [String:Data]
+                            if let deserializedMetadata = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData( metadata ) as? [KeyType:Data]
                             {
                                 metadataValues = deserializedMetadata.compactMapValues
                                 {
