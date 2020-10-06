@@ -210,7 +210,7 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
     {
         queue.async
         {
-//            os_log( "read: %{public}@", log:self.log, type:.default, collection.description )
+            os_log( "read: %{public}@", log:self.log, type:.default, collection.description )
             let subject = self.getSubject( for:collection )
             block( subject.value )
         }
@@ -225,7 +225,7 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
             block( subject.value, &transaction )
             if transaction.isMutated
             {
-//                os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
+                os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
                 let mutatedValue = transaction.process( using:subject.value )
                 subject.value = mutatedValue
                 guard self.restored else
@@ -274,7 +274,7 @@ public class HashishTable<CollectionType,KeyType> where CollectionType:Collectio
                         
                         let metadata = try NSKeyedArchiver.archivedData( withRootObject:serializedMetadata, requiringSecureCoding:true )
                         try metadata.write( to:self.metadataStorageURL( for:collection ) )
-//                        os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
+                        os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
                     }
                     catch
                     {
