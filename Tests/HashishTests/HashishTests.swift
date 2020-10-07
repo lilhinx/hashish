@@ -63,7 +63,7 @@ final class HashishTests:XCTestCase
 
     func test_putData_removeData( )
     {
-        let store:HashishTable<TableIdentifier,String> = .init( label:"test_putData_removeData", partition:"test" )
+        let store:HashishTable<String,TableIdentifier> = .init( label:"test_putData_removeData", partition:"test" )
         
         let key:String = "bar"
         let num:Int32 = 42

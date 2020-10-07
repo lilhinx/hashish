@@ -23,7 +23,7 @@ public struct HashishValue
     public var metadata:Message?
 }
 
-public class HashishTable<CollectionType,KeyType> where CollectionType:Collection, KeyType:Hashable
+public class HashishTable<KeyType,CollectionType> where CollectionType:Collection, KeyType:Hashable
 {
     public typealias KeyValueStore = [KeyType:HashishValue]
     typealias KeyValueCollectionSubject = CurrentValueSubject<KeyValueStore,Never>
