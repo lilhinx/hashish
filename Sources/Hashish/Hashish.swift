@@ -101,6 +101,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         internal let collection:CollectionType
         internal let existingKeys:Set<KeyType>
         internal var update:KeyValueStore = [ : ]
+        internal var clobbers:[KeyType:Bool] = [ : ]
         internal var deletes:Set<KeyType> = [ ]
         internal var metadataUpdate:[KeyType:Message] = [ : ]
         internal var metadataUpdateIsInitiallyOnly:[KeyType:Bool] = [ : ]
@@ -121,7 +122,8 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             var store = input
             for ( key, value ) in update
             {
-                HashishTable.put( data:value.data, for:key, in:collection, with:&store, phase:.commit )
+                let clobber = clobbers[ key ]!
+                HashishTable.put( data:value.data, for:key, in:collection, with:&store, phase:.commit, clobber:clobber )
             }
             for delete in deletes
             {
@@ -141,6 +143,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         
         public mutating func put( data:Message, for key:KeyType, clobber:Bool = false )
         {
+            clobbers[ key ] = clobber
             HashishTable.put( data:data, for:key, in:collection, with:&update, phase:.prepare, clobber:clobber )
             deletes.remove( key )
         }
