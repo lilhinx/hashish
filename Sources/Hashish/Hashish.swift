@@ -306,12 +306,12 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         return dir
     }
     
-    private func metadataStorageURL( for collection:CollectionType )->URL
+    public func metadataStorageURL( for collection:CollectionType )->URL
     {
         return storageDirectory( ).appendingPathComponent( "\( collection.description ).metadata" ).appendingPathExtension( "hashish" )
     }
     
-    private func dataStorageURL( for collection:CollectionType )->URL
+    public func dataStorageURL( for collection:CollectionType )->URL
     {
         return storageDirectory( ).appendingPathComponent( collection.description ).appendingPathExtension( "hashish" )
     }
