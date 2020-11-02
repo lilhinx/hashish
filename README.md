@@ -2,7 +2,7 @@
 
 Hashish provides a simple implementation of a collection of hash tables for in-memory and on-disk storage of serialized model objects. It internally enforces sequential writes to data which generate published updates which can be observed via Combine subscriptions. 
 
-Model objects conform to the SwiftProtobuf message protocol, and are assumed to be protobuf generated model classes.  
+Model objects conform to the Google Protobuf message protocol, and are assumed to be protobuf generated model classes.  
 
 Model objects can optionally store a metadata object alongside the model object, which can be updated independently. 
 
