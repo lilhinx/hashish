@@ -7,6 +7,7 @@ import os.log
 
 public protocol Collection:Hashable,CustomStringConvertible,RawRepresentable,CaseIterable
 {
+    var persist:Bool{ get }
     var isOptimisticLockable:Bool{ get }
     func decode( data:Data )->Message?
     func decode( metadata:Data )->Message?
@@ -236,6 +237,11 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                     return
                 }
                 
+                guard collection.persist else
+                {
+                    return
+                }
+                
                 self.diskQueue.async
                 {
                     let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
@@ -324,6 +330,11 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             os_log( "restoring from disk", log:self.log, type:.default )
             for collection in CollectionType.allCases
             {
+                guard collection.persist else
+                {
+                    continue
+                }
+                
                 guard let data = try? Data.init( contentsOf:self.dataStorageURL( for:collection ) ) else
                 {
                     continue

@@ -11,6 +11,17 @@ final class HashishTests:XCTestCase
         case foos
         case importantDocument
         
+        var persist:Bool
+        {
+            switch self
+            {
+            case .importantDocument:
+                return true
+            default:
+                return false
+            }
+        }
+        
         var isOptimisticLockable:Bool
         {
             switch self
