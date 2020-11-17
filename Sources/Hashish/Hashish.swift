@@ -26,9 +26,12 @@ public struct HashishValue
 
 public class HashishTable<KeyType,CollectionType> where CollectionType:Collection, KeyType:Hashable
 {
+    public typealias KeySet = Set<KeyType>
     public typealias KeyValueStore = [KeyType:HashishValue]
     typealias KeyValueCollectionCurrentValueSubject = CurrentValueSubject<KeyValueStore,Never>
     typealias KeyValueCollectionPassthroughSubject = PassthroughSubject<KeyValueStore,Never>
+    typealias KeySetPassthroughSubject = PassthroughSubject<KeySet,Never>
+    public typealias KeySetPublisher = AnyPublisher<KeySet,Never>
     public typealias KeyValueCollectionPublisher = AnyPublisher<KeyValueStore,Never>
     public typealias ReadTransactionBlock = ( KeyValueStore )->Void
     public typealias WriteTransactionBlock = ( KeyValueStore, inout WriteTransaction )->Void
@@ -119,7 +122,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             return mutationCount > 0
         }
         
-        fileprivate func process( using input:KeyValueStore )->( KeyValueStore, KeyValueStore )
+        fileprivate func process( using input:KeyValueStore )->( KeyValueStore, KeyValueStore, Set<KeyType> )
         {
             var store = input
             var inserts = KeyValueStore( )
@@ -132,9 +135,9 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                 }
                 HashishTable.put( data:value.data, for:key, in:collection, with:&store, phase:.commit, clobber:clobber )
             }
-            for delete in deletes
+            for delete in self.deletes
             {
-                HashishTable.remove(for:delete, in:collection, with: &store )
+                HashishTable.remove( for:delete, in:collection, with: &store )
             }
             for ( key, metadata ) in metadataUpdate
             {
@@ -145,7 +148,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             {
                 HashishTable.removeMeta( for:delete, in:collection, with:&store )
             }
-            return ( store, inserts )
+            return ( store, inserts, deletes )
         }
         
         public mutating func put( data:Message, for key:KeyType, clobber:Bool = false )
@@ -230,6 +233,21 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         return getInsertSubject( for:colletion ).eraseToAnyPublisher( )
     }
     
+    var deletesSubjects:[CollectionType:KeySetPassthroughSubject] = [ : ]
+    private func getDeletesSubject( for collection:CollectionType )->KeySetPassthroughSubject
+    {
+        if !deletesSubjects.keys.contains( collection )
+        {
+            deletesSubjects[ collection ] = KeySetPassthroughSubject.init( )
+        }
+        return deletesSubjects[ collection ]!
+    }
+    
+    public func deletes( for colletion:CollectionType )->KeySetPublisher
+    {
+        return getDeletesSubject( for:colletion ).eraseToAnyPublisher( )
+    }
+    
     
     public func read( collection:CollectionType, with block:@escaping ReadTransactionBlock )
     {
@@ -246,18 +264,23 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         queue.async
         {
             let subject = self.getSubject( for:collection )
-            let insertSubject = self.getInsertSubject( for:collection )
+            let insertsSubject = self.getInsertSubject( for:collection )
+            let deletesSubject = self.getDeletesSubject( for:collection )
             var transaction:WriteTransaction = .init( collection:collection, existingKeys:Set<KeyType>( subject.value.keys ) )
             block( subject.value, &transaction )
             if transaction.isMutated
             {
                 os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
-                let ( mutatedValue, inserts ) = transaction.process( using:subject.value )
+                let ( mutatedValue, inserts, deletes ) = transaction.process( using:subject.value )
                 if !inserts.isEmpty
                 {
-                    insertSubject.send( inserts )
+                    insertsSubject.send( inserts )
                 }
                 subject.value = mutatedValue
+                if !deletes.isEmpty
+                {
+                    deletesSubject.send( deletes )
+                }
                 guard self.restored else
                 {
                     return
