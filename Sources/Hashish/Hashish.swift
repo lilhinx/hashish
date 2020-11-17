@@ -27,7 +27,8 @@ public struct HashishValue
 public class HashishTable<KeyType,CollectionType> where CollectionType:Collection, KeyType:Hashable
 {
     public typealias KeyValueStore = [KeyType:HashishValue]
-    typealias KeyValueCollectionSubject = CurrentValueSubject<KeyValueStore,Never>
+    typealias KeyValueCollectionCurrentValueSubject = CurrentValueSubject<KeyValueStore,Never>
+    typealias KeyValueCollectionPassthroughSubject = PassthroughSubject<KeyValueStore,Never>
     public typealias KeyValueCollectionPublisher = AnyPublisher<KeyValueStore,Never>
     public typealias ReadTransactionBlock = ( KeyValueStore )->Void
     public typealias WriteTransactionBlock = ( KeyValueStore, inout WriteTransaction )->Void
@@ -118,12 +119,17 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             return mutationCount > 0
         }
         
-        fileprivate func process( using input:KeyValueStore )->KeyValueStore
+        fileprivate func process( using input:KeyValueStore )->( KeyValueStore, KeyValueStore )
         {
             var store = input
+            var inserts = KeyValueStore( )
             for ( key, value ) in update
             {
                 let clobber = clobbers[ key ]!
+                if !input.keys.contains( key )
+                {
+                    inserts[ key ] = value
+                }
                 HashishTable.put( data:value.data, for:key, in:collection, with:&store, phase:.commit, clobber:clobber )
             }
             for delete in deletes
@@ -139,7 +145,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             {
                 HashishTable.removeMeta( for:delete, in:collection, with:&store )
             }
-            return store
+            return ( store, inserts )
         }
         
         public mutating func put( data:Message, for key:KeyType, clobber:Bool = false )
@@ -191,22 +197,37 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     }
     
    
-    var subjects:[CollectionType:KeyValueCollectionSubject] = [ : ]
+    var subjects:[CollectionType:KeyValueCollectionCurrentValueSubject] = [ : ]
     
-    private func getSubject( for collection:CollectionType )->KeyValueCollectionSubject
+    private func getSubject( for collection:CollectionType )->KeyValueCollectionCurrentValueSubject
     {
         if !subjects.keys.contains( collection )
         {
-            subjects[ collection ] = KeyValueCollectionSubject.init( [ : ] )
+            subjects[ collection ] = KeyValueCollectionCurrentValueSubject.init( [ : ] )
         }
         return subjects[ collection ]!
     }
     
     
-    
     public func publisher( for collection:CollectionType )->KeyValueCollectionPublisher
     {
         return getSubject( for:collection ).eraseToAnyPublisher( )
+    }
+
+    
+    var insertSubjects:[CollectionType:KeyValueCollectionPassthroughSubject] = [ : ]
+    private func getInsertSubject( for collection:CollectionType )->KeyValueCollectionPassthroughSubject
+    {
+        if !insertSubjects.keys.contains( collection )
+        {
+            insertSubjects[ collection ] = KeyValueCollectionPassthroughSubject.init( )
+        }
+        return insertSubjects[ collection ]!
+    }
+    
+    public func inserts( for colletion:CollectionType )->KeyValueCollectionPublisher
+    {
+        return getInsertSubject( for:colletion ).eraseToAnyPublisher( )
     }
     
     
@@ -225,12 +246,17 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         queue.async
         {
             let subject = self.getSubject( for:collection )
+            let insertSubject = self.getInsertSubject( for:collection )
             var transaction:WriteTransaction = .init( collection:collection, existingKeys:Set<KeyType>( subject.value.keys ) )
             block( subject.value, &transaction )
             if transaction.isMutated
             {
                 os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
-                let mutatedValue = transaction.process( using:subject.value )
+                let ( mutatedValue, inserts ) = transaction.process( using:subject.value )
+                if !inserts.isEmpty
+                {
+                    insertSubject.send( inserts )
+                }
                 subject.value = mutatedValue
                 guard self.restored else
                 {
