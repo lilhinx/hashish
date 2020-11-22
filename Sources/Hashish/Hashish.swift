@@ -190,7 +190,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     let queue:DispatchQueue
     let diskQueue:DispatchQueue
     let log:OSLog
-    let partition:String
+    public let partition:String
     public init( label:String, partition:String )
     {
         queue = .init( label:label )
