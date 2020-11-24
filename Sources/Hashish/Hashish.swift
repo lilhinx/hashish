@@ -188,13 +188,11 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     }
     
     let queue:DispatchQueue
-    let diskQueue:DispatchQueue
     let log:OSLog
     public let partition:String
     public init( label:String, partition:String )
     {
         queue = .init( label:label )
-        diskQueue = .init( label:"\( label )_disk" )
         log = OSLog.init( subsystem:"Hashish", category:label )
         self.partition = partition
     }
@@ -291,7 +289,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                     return
                 }
                 
-                self.diskQueue.async
+                self.queue.async
                 {
                     let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
                     {
@@ -374,7 +372,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     var restored:Bool = false
     public func restore( then:( ( )->Void )? )
     {
-        diskQueue.async
+        queue.async
         {
             os_log( "restoring from disk", log:self.log, type:.default )
             for collection in CollectionType.allCases
@@ -437,7 +435,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     
     public func purge( )
     {
-        diskQueue.async
+        queue.async
         {
             os_log( "purging disk", log:self.log, type:.default )
             for collection in CollectionType.allCases
