@@ -88,6 +88,10 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                     value.data = data
                     store[ key ] = value
                 }
+                else
+                {
+                    print( "ignoring put due to optimistic locking" )
+                }
             }
             else
             {
