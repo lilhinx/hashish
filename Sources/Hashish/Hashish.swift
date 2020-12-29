@@ -3,12 +3,17 @@ import Combine
 import SwiftProtobuf
 import os.log
 
-
+public enum OptimisticLockVersionStrictness
+{
+    case greaterThan
+    case greaterThanOrEqualTo
+}
 
 public protocol Collection:Hashable,CustomStringConvertible,RawRepresentable,CaseIterable
 {
     var persist:Bool{ get }
     var isOptimisticLockable:Bool{ get }
+    var optimisticLockVersionStrictness:OptimisticLockVersionStrictness?{ get }
     func decode( data:Data )->Message?
     func decode( metadata:Data )->Message?
 }
@@ -42,6 +47,34 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         case commit
     }
     
+    fileprivate static func allowUpdate( in collection:CollectionType, newLockable:OptimisticLockable, oldLockable:OptimisticLockable, clobber:Bool )->Bool
+    {
+        if clobber
+        {
+            return true
+        }
+        
+        guard collection.isOptimisticLockable else
+        {
+            return true
+        }
+        
+        var strictness:OptimisticLockVersionStrictness = .greaterThan
+        if let collectionStrictness = collection.optimisticLockVersionStrictness
+        {
+            strictness = collectionStrictness
+        }
+        
+        switch strictness
+        {
+        case .greaterThan:
+            return newLockable.version > oldLockable.version
+        case .greaterThanOrEqualTo:
+            return newLockable.version >= oldLockable.version
+            
+        }
+    }
+    
     fileprivate static func put( data:Message, for key:KeyType, in collection:CollectionType, with store: inout KeyValueStore, phase:Phase, clobber:Bool = false )
     {
         if store.keys.contains( key )
@@ -50,7 +83,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             if collection.isOptimisticLockable, let newLockable = data as? OptimisticLockable, let oldLockable = value.data as? OptimisticLockable
             {
                 
-                if newLockable.version > oldLockable.version || clobber
+                if allowUpdate( in:collection, newLockable:newLockable, oldLockable:oldLockable, clobber:clobber )
                 {
                     value.data = data
                     store[ key ] = value

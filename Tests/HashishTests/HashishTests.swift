@@ -8,6 +8,8 @@ final class HashishTests:XCTestCase
 {
     enum TableIdentifier:String, Collection, CustomStringConvertible
     {
+        
+        
         case foos
         case importantDocument
         
@@ -30,6 +32,17 @@ final class HashishTests:XCTestCase
                 return true
             default:
                 return false
+            }
+        }
+        
+        var optimisticLockVersionStrictness:OptimisticLockVersionStrictness?
+        {
+            switch self
+            {
+            case .importantDocument:
+                return .greaterThan
+            default:
+                return nil
             }
         }
         
@@ -114,20 +127,6 @@ final class HashishTests:XCTestCase
         XCTAssertNotNil( barObserver )
         barObserver.cancel( )
         
-        
-        
-//        XCTAssertTrue( store.getAll( for:.foos ).keys.contains( key ) )
-//
-//
-//        store.mutate( collection:.foos )
-//        {
-//            ( transaction ) in
-//            transaction.remove( for:key )
-//        }
-//
-//        waitABit( )
-//
-//        XCTAssertFalse( store.getAll( for:.foos ).keys.contains( key ) )
         
     }
     
