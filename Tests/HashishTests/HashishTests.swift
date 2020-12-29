@@ -2,7 +2,13 @@ import XCTest
 import SwiftProtobuf
 @testable import Hashish
 
-extension ModelImportantDocument:Hashish.OptimisticLockable{ }
+extension ModelImportantDocument:Hashish.OptimisticLockable
+{
+    public var optimisticLockVersion:Int64
+    {
+        return version
+    }
+}
 
 final class HashishTests:XCTestCase
 {

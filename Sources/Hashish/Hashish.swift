@@ -20,7 +20,7 @@ public protocol Collection:Hashable,CustomStringConvertible,RawRepresentable,Cas
 
 public protocol OptimisticLockable
 {
-    var version:Int64{ get }
+    var optimisticLockVersion:Int64{ get }
 }
 
 public struct HashishValue
@@ -68,9 +68,9 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         switch strictness
         {
         case .greaterThan:
-            return newLockable.version > oldLockable.version
+            return newLockable.optimisticLockVersion > oldLockable.optimisticLockVersion
         case .greaterThanOrEqualTo:
-            return newLockable.version >= oldLockable.version
+            return newLockable.optimisticLockVersion >= oldLockable.optimisticLockVersion
             
         }
     }
