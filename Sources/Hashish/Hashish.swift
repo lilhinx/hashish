@@ -82,16 +82,10 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             var value = store[ key ]!
             if collection.isOptimisticLockable, let newLockable = data as? OptimisticLockable, let oldLockable = value.data as? OptimisticLockable
             {
-                
-                print( "\( newLockable.optimisticLockVersion ) <> \( oldLockable.optimisticLockVersion )" )
                 if allowUpdate( in:collection, newLockable:newLockable, oldLockable:oldLockable, clobber:clobber )
                 {
                     value.data = data
                     store[ key ] = value
-                }
-                else
-                {
-                    print( "ignoring put due to optimistic locking" )
                 }
             }
             else
