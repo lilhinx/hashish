@@ -320,75 +320,77 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             self.updateQueue.async
             {
                 block( subject.value, &transaction )
-            }
-            
-            if transaction.isMutated
-            {
-                os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
-                let ( mutatedValue, inserts, deletes ) = transaction.process( using:subject.value )
-                if !inserts.isEmpty
+                if transaction.isMutated
                 {
-                    insertsSubject.send( inserts )
-                }
-                subject.value = mutatedValue
-                if !deletes.isEmpty
-                {
-                    deletesSubject.send( deletes )
-                }
-                guard self.restored else
-                {
-                    return
-                }
-                
-                guard collection.persist else
-                {
-                    return
-                }
-                
-                let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
-                {
-                    ( value )->Data? in
-                    guard let data = try? value.data.serializedData( ) else
+                    self.workQueue.async
                     {
-                        return nil
-                    }
-                    
-                    guard data.count > 0 else
-                    {
-                        return nil
-                    }
-                    
-                    return data
-                }
-                
-                do
-                {
-                    let data = try NSKeyedArchiver.archivedData( withRootObject:serializedData, requiringSecureCoding:true )
-                    try data.write( to:self.dataStorageURL( for:collection ) )
-                    
-                    let serializedMetadata:[KeyType:Data] = mutatedValue.compactMapValues
-                    {
-                        ( value )->Data? in
-                        guard let data = try? value.metadata?.serializedData( ) else
+                        os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
+                        let ( mutatedValue, inserts, deletes ) = transaction.process( using:subject.value )
+                        if !inserts.isEmpty
                         {
-                            return nil
+                            insertsSubject.send( inserts )
+                        }
+                        subject.value = mutatedValue
+                        if !deletes.isEmpty
+                        {
+                            deletesSubject.send( deletes )
+                        }
+                        guard self.restored else
+                        {
+                            return
                         }
                         
-                        guard data.count > 0 else
+                        guard collection.persist else
                         {
-                            return nil
+                            return
                         }
                         
-                        return data
+                        let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
+                        {
+                            ( value )->Data? in
+                            guard let data = try? value.data.serializedData( ) else
+                            {
+                                return nil
+                            }
+                            
+                            guard data.count > 0 else
+                            {
+                                return nil
+                            }
+                            
+                            return data
+                        }
+                        
+                        do
+                        {
+                            let data = try NSKeyedArchiver.archivedData( withRootObject:serializedData, requiringSecureCoding:true )
+                            try data.write( to:self.dataStorageURL( for:collection ) )
+                            
+                            let serializedMetadata:[KeyType:Data] = mutatedValue.compactMapValues
+                            {
+                                ( value )->Data? in
+                                guard let data = try? value.metadata?.serializedData( ) else
+                                {
+                                    return nil
+                                }
+                                
+                                guard data.count > 0 else
+                                {
+                                    return nil
+                                }
+                                
+                                return data
+                            }
+                            
+                            let metadata = try NSKeyedArchiver.archivedData( withRootObject:serializedMetadata, requiringSecureCoding:true )
+                            try metadata.write( to:self.metadataStorageURL( for:collection ) )
+                            os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
+                        }
+                        catch
+                        {
+                            os_log( "disk write error: %{public}@", log:self.log, type:.error, error.localizedDescription )
+                        }
                     }
-                    
-                    let metadata = try NSKeyedArchiver.archivedData( withRootObject:serializedMetadata, requiringSecureCoding:true )
-                    try metadata.write( to:self.metadataStorageURL( for:collection ) )
-                    os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
-                }
-                catch
-                {
-                    os_log( "disk write error: %{public}@", log:self.log, type:.error, error.localizedDescription )
                 }
             }
         }
