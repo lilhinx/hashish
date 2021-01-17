@@ -244,7 +244,12 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     
     public func publisher( for collection:CollectionType )->KeyValueCollectionPublisher
     {
-        return getSubject( for:collection ).eraseToAnyPublisher( )
+        var ret:KeyValueCollectionPublisher!
+        queue.sync
+        {
+            ret = getSubject( for:collection ).eraseToAnyPublisher( )
+        }
+        return ret
     }
 
     
@@ -260,7 +265,12 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     
     public func inserts( for colletion:CollectionType )->KeyValueCollectionPublisher
     {
-        return getInsertSubject( for:colletion ).eraseToAnyPublisher( )
+        var ret:KeyValueCollectionPublisher!
+        queue.sync
+        {
+            ret = getInsertSubject( for:colletion ).eraseToAnyPublisher( )
+        }
+        return ret
     }
     
     var deletesSubjects:[CollectionType:KeySetPassthroughSubject] = [ : ]
@@ -275,7 +285,12 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     
     public func deletes( for colletion:CollectionType )->KeySetPublisher
     {
-        return getDeletesSubject( for:colletion ).eraseToAnyPublisher( )
+        var ret:KeySetPublisher!
+        queue.sync
+        {
+            ret = getDeletesSubject( for:colletion ).eraseToAnyPublisher( )
+        }
+        return ret
     }
     
     
