@@ -219,12 +219,14 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
         }
     }
     
-    let queue:DispatchQueue
+    let workQueue:DispatchQueue
+    let updateQueue:DispatchQueue
     let log:OSLog
     public let partition:String
     public init( label:String, partition:String )
     {
-        queue = .init( label:label )
+        workQueue = .init( label:"\( label )_work" )
+        updateQueue = .init( label:"\( label )_update" )
         log = OSLog.init( subsystem:"Hashish", category:label )
         self.partition = partition
     }
@@ -245,7 +247,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     public func publisher( for collection:CollectionType )->KeyValueCollectionPublisher
     {
         var ret:KeyValueCollectionPublisher!
-        queue.sync
+        workQueue.sync
         {
             ret = getSubject( for:collection ).eraseToAnyPublisher( )
         }
@@ -266,7 +268,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     public func inserts( for colletion:CollectionType )->KeyValueCollectionPublisher
     {
         var ret:KeyValueCollectionPublisher!
-        queue.sync
+        workQueue.sync
         {
             ret = getInsertSubject( for:colletion ).eraseToAnyPublisher( )
         }
@@ -286,7 +288,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     public func deletes( for colletion:CollectionType )->KeySetPublisher
     {
         var ret:KeySetPublisher!
-        queue.sync
+        workQueue.sync
         {
             ret = getDeletesSubject( for:colletion ).eraseToAnyPublisher( )
         }
@@ -296,23 +298,30 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     
     public func read( collection:CollectionType, with block:@escaping ReadTransactionBlock )
     {
-        queue.async
+        workQueue.async
         {
             os_log( "read: %{public}@", log:self.log, type:.default, collection.description )
             let subject = self.getSubject( for:collection )
-            block( subject.value )
+            self.updateQueue.async
+            {
+                block( subject.value )
+            }
         }
     }
     
     public func readWrite( collection:CollectionType, with block:@escaping WriteTransactionBlock )
     {
-        queue.async
+        workQueue.async
         {
             let subject = self.getSubject( for:collection )
             let insertsSubject = self.getInsertSubject( for:collection )
             let deletesSubject = self.getDeletesSubject( for:collection )
             var transaction:WriteTransaction = .init( collection:collection, existingKeys:Set<KeyType>( subject.value.keys ) )
-            block( subject.value, &transaction )
+            self.updateQueue.async
+            {
+                block( subject.value, &transaction )
+            }
+            
             if transaction.isMutated
             {
                 os_log( "write: %{public}@", log:self.log, type:.default, collection.description )
@@ -336,12 +345,31 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                     return
                 }
                 
-                self.queue.async
+                let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
                 {
-                    let serializedData:[KeyType:Data] = mutatedValue.compactMapValues
+                    ( value )->Data? in
+                    guard let data = try? value.data.serializedData( ) else
+                    {
+                        return nil
+                    }
+                    
+                    guard data.count > 0 else
+                    {
+                        return nil
+                    }
+                    
+                    return data
+                }
+                
+                do
+                {
+                    let data = try NSKeyedArchiver.archivedData( withRootObject:serializedData, requiringSecureCoding:true )
+                    try data.write( to:self.dataStorageURL( for:collection ) )
+                    
+                    let serializedMetadata:[KeyType:Data] = mutatedValue.compactMapValues
                     {
                         ( value )->Data? in
-                        guard let data = try? value.data.serializedData( ) else
+                        guard let data = try? value.metadata?.serializedData( ) else
                         {
                             return nil
                         }
@@ -354,35 +382,13 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
                         return data
                     }
                     
-                    do
-                    {
-                        let data = try NSKeyedArchiver.archivedData( withRootObject:serializedData, requiringSecureCoding:true )
-                        try data.write( to:self.dataStorageURL( for:collection ) )
-                        
-                        let serializedMetadata:[KeyType:Data] = mutatedValue.compactMapValues
-                        {
-                            ( value )->Data? in
-                            guard let data = try? value.metadata?.serializedData( ) else
-                            {
-                                return nil
-                            }
-                            
-                            guard data.count > 0 else
-                            {
-                                return nil
-                            }
-                            
-                            return data
-                        }
-                        
-                        let metadata = try NSKeyedArchiver.archivedData( withRootObject:serializedMetadata, requiringSecureCoding:true )
-                        try metadata.write( to:self.metadataStorageURL( for:collection ) )
-                        os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
-                    }
-                    catch
-                    {
-                        os_log( "disk write error: %{public}@", log:self.log, type:.error, error.localizedDescription )
-                    }
+                    let metadata = try NSKeyedArchiver.archivedData( withRootObject:serializedMetadata, requiringSecureCoding:true )
+                    try metadata.write( to:self.metadataStorageURL( for:collection ) )
+                    os_log( "diskwrite: %{public}@", log:self.log, type:.default, collection.description )
+                }
+                catch
+                {
+                    os_log( "disk write error: %{public}@", log:self.log, type:.error, error.localizedDescription )
                 }
             }
         }
@@ -419,7 +425,7 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
     var restored:Bool = false
     public func restore( then:( ( )->Void )? )
     {
-        queue.async
+        workQueue.async
         {
             os_log( "restoring from disk", log:self.log, type:.default )
             for collection in CollectionType.allCases
@@ -476,13 +482,16 @@ public class HashishTable<KeyType,CollectionType> where CollectionType:Collectio
             
             self.restored = true
             os_log( "restore complete", log:self.log, type:.default )
-            then?( )
+            self.updateQueue.async
+            {
+                then?( )
+            }
         }
     }
     
     public func purge( )
     {
-        queue.async
+        workQueue.async
         {
             os_log( "purging disk", log:self.log, type:.default )
             for collection in CollectionType.allCases
